@@ -6,6 +6,7 @@ __pycache__/
 .mypy_cache/
 *.egg-info/
 *.env
+.env.runtime
 state.db
 state.db-*
 .DS_Store

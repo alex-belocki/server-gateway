@@ -66,14 +66,12 @@ Run the installer on the target server:
 The installer, run from the project root directory:
 
 - creates `.env` from the example if missing
+- reuses the existing `.env` if present
+- generates only missing auth secrets when placeholder values remain
+- enables linger for the current user so the service survives logout and reboot
 - installs a systemd user unit that runs the app in place
 - runs `uv sync`
-
-On first install, edit the env file and start the service manually:
-
-```bash
-systemctl --user start server-gateway.service
-```
+- enables and starts `server-gateway.service` automatically
 
 Configure Caddy or another reverse proxy to terminate HTTPS and proxy to `127.0.0.1:8787`.
 

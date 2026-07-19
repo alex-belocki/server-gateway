@@ -41,6 +41,7 @@ chmod 600 .env
 ```
 
 Fill in at least the auth settings and any IP restrictions.
+This `.env` file is the single source of truth for runtime configuration.
 
 ## Local Development
 
@@ -68,6 +69,7 @@ The installer, run from the project root directory:
 - creates `.env` from the example if missing
 - reuses the existing `.env` if present
 - generates only missing auth secrets when placeholder values remain
+- uses `.env` directly as the systemd `EnvironmentFile`
 - enables linger for the current user so the service survives logout and reboot
 - installs a systemd user unit that runs the app in place
 - runs `uv sync`

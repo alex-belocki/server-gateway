@@ -113,7 +113,7 @@ echo "loginctl:$*" >> "{log_path}"
                 "systemctl:--user enable --now server-gateway.service", log_text
             )
 
-    def test_ignores_invalid_lines_when_loading_env_for_systemd(self) -> None:
+    def test_uses_dotenv_directly_for_systemd_without_runtime_file(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             temp_root = Path(tempdir)
             project_root = temp_root / "project"
@@ -146,7 +146,6 @@ echo "loginctl:$*" >> "{log_path}"
                         "SERVER_GATEWAY_AUTH_MODE=hmac",
                         "SERVER_GATEWAY_HMAC_KEYS=default:test-key",
                         "LEGACY_NAME=still-kept",
-                        "~",
                         "",
                     ]
                 )
@@ -190,14 +189,14 @@ echo "loginctl:$*" >> "{log_path}"
                 check=True,
             )
 
-            runtime_env_path = project_root / ".env.runtime"
+            env_path = project_root / ".env"
             unit_text = (
                 home_dir / ".config" / "systemd" / "user" / "server-gateway.service"
             ).read_text()
 
-            self.assertTrue(runtime_env_path.exists())
-            self.assertIn(f"EnvironmentFile={runtime_env_path}", unit_text)
-            self.assertNotIn("\n~\n", runtime_env_path.read_text())
+            self.assertTrue(env_path.exists())
+            self.assertIn(f"EnvironmentFile={env_path}", unit_text)
+            self.assertFalse((project_root / ".env.runtime").exists())
 
     def _write_stub(self, path: Path, contents: str) -> None:
         path.write_text(contents)

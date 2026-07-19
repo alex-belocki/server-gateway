@@ -3,7 +3,6 @@ set -euo pipefail
 
 APP_ROOT="$(pwd)"
 ENV_PATH="${APP_ROOT}/.env"
-RUNTIME_ENV_PATH="${APP_ROOT}/.env.runtime"
 UNIT_PATH="${HOME}/.config/systemd/user/server-gateway.service"
 PYTHON_BIN="$(command -v python3 || command -v python)"
 CURRENT_USER="${USER:-$(id -un)}"
@@ -71,27 +70,8 @@ print(secrets.token_urlsafe(48))
 PY
 }
 
-write_runtime_env() {
-  "${PYTHON_BIN}" - "$ENV_PATH" "$RUNTIME_ENV_PATH" <<'PY'
-from pathlib import Path
-import re
-import sys
-
-source_path = Path(sys.argv[1])
-runtime_path = Path(sys.argv[2])
-pattern = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-valid_lines = [
-    line for line in source_path.read_text().splitlines() if pattern.match(line)
-]
-runtime_path.write_text("\n".join(valid_lines) + "\n")
-PY
-  chmod 600 "${RUNTIME_ENV_PATH}"
-}
-
-write_runtime_env
-
 set -a
-. "${RUNTIME_ENV_PATH}"
+. "${ENV_PATH}"
 set +a
 
 AUTH_MODE="${SERVER_GATEWAY_AUTH_MODE:-hmac}"
@@ -109,10 +89,8 @@ if [[ "${AUTH_MODE}" == "hmac" || "${AUTH_MODE}" == "either" ]]; then
   fi
 fi
 
-write_runtime_env
-
 set -a
-. "${RUNTIME_ENV_PATH}"
+. "${ENV_PATH}"
 set +a
 
 loginctl enable-linger "${CURRENT_USER}"
@@ -128,7 +106,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=${APP_ROOT}
-EnvironmentFile=${RUNTIME_ENV_PATH}
+EnvironmentFile=${ENV_PATH}
 Environment=PYTHONPATH=${APP_ROOT}/src
 ExecStart=${APP_ROOT}/.venv/bin/python -m uvicorn server_gateway.main:app --host ${SERVER_GATEWAY_HOST:-127.0.0.1} --port ${SERVER_GATEWAY_PORT:-8787} --log-level ${SERVER_GATEWAY_LOG_LEVEL:-info}
 Restart=always

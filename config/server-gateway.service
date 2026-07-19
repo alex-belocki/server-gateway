@@ -1,0 +1,18 @@
+[Unit]
+Description=Server Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/server-gateway
+EnvironmentFile=-%h/.config/server-gateway/server-gateway.env
+Environment=PYTHONPATH=%h/.local/share/server-gateway/src
+ExecStart=%h/.local/share/server-gateway/.venv/bin/python -m uvicorn server_gateway.main:app --host 127.0.0.1 --port 8787
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

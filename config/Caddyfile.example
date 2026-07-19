@@ -1,0 +1,18 @@
+# Replace with your actual domain
+gateway.example.com {
+    encode zstd gzip
+
+    reverse_proxy 127.0.0.1:8787
+
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy no-referrer
+    }
+
+    log {
+        output file /var/log/caddy/server-gateway.access.log
+        format json
+    }
+}

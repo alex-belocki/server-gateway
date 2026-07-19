@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import base64
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Tuple
@@ -37,6 +38,24 @@ def _parse_hmac_keys(raw: str) -> dict[str, str]:
     return keys
 
 
+def _parse_encryption_keys(raw: str) -> dict[str, bytes]:
+    keys: dict[str, bytes] = {}
+    for chunk in raw.split(","):
+        item = chunk.strip()
+        if not item:
+            continue
+        key_id, sep, secret = item.partition(":")
+        if not sep or not key_id.strip() or not secret.strip():
+            raise ValueError(
+                "SERVER_GATEWAY_ENCRYPTION_KEYS must be key_id:base64key pairs separated by commas"
+            )
+        decoded = base64.b64decode(secret.strip().encode("ascii"), validate=True)
+        if len(decoded) not in {16, 24, 32}:
+            raise ValueError("SERVER_GATEWAY_ENCRYPTION_KEYS values must decode to 16, 24, or 32 bytes")
+        keys[key_id.strip()] = decoded
+    return keys
+
+
 def _parse_csv(raw: str) -> Tuple[str, ...]:
     return tuple(item.strip() for item in raw.split(",") if item.strip())
 
@@ -49,6 +68,7 @@ class Settings:
     auth_mode: str
     bearer_token: str
     hmac_keys: dict[str, str]
+    encryption_keys: dict[str, bytes]
     request_ttl_seconds: int
     request_id_ttl_seconds: int
     rate_limit_per_minute: int
@@ -66,10 +86,15 @@ class Settings:
 
         bearer_token = os.getenv("SERVER_GATEWAY_BEARER_TOKEN", "").strip()
         hmac_keys = _parse_hmac_keys(os.getenv("SERVER_GATEWAY_HMAC_KEYS", "").strip())
+        encryption_keys = _parse_encryption_keys(
+            os.getenv("SERVER_GATEWAY_ENCRYPTION_KEYS", "").strip()
+        )
         if auth_mode in {"bearer", "either"} and not bearer_token:
             raise ValueError("SERVER_GATEWAY_BEARER_TOKEN is required for bearer/either mode")
         if auth_mode in {"hmac", "either"} and not hmac_keys:
             raise ValueError("SERVER_GATEWAY_HMAC_KEYS is required for hmac/either mode")
+        if not encryption_keys:
+            raise ValueError("SERVER_GATEWAY_ENCRYPTION_KEYS is required")
 
         allowed_ips = _parse_csv(os.getenv("SERVER_GATEWAY_ALLOWED_IPS", ""))
         trusted_proxies = _parse_csv(os.getenv("SERVER_GATEWAY_TRUSTED_PROXIES", "127.0.0.1,::1"))
@@ -86,6 +111,7 @@ class Settings:
             auth_mode=auth_mode,
             bearer_token=bearer_token,
             hmac_keys=hmac_keys,
+            encryption_keys=encryption_keys,
             request_ttl_seconds=_env_int("SERVER_GATEWAY_REQUEST_TTL_SECONDS", 300),
             request_id_ttl_seconds=_env_int("SERVER_GATEWAY_REQUEST_ID_TTL_SECONDS", 86400),
             rate_limit_per_minute=_env_int("SERVER_GATEWAY_RATE_LIMIT_PER_MINUTE", 60),

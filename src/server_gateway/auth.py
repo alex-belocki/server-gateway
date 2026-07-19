@@ -18,6 +18,7 @@ class AuthContext:
     principal: str
     client_ip: str
     request_id: str
+    timestamp: str | None = None
 
 
 def _is_trusted_proxy(client_ip: str, trusted_proxies: tuple[str, ...]) -> bool:
@@ -120,6 +121,7 @@ async def authenticate_request(
             principal="bearer",
             client_ip=client_ip,
             request_id=request_id,
+            timestamp=None,
         )
 
     if settings.auth_mode in {"hmac", "either"} and key_id and timestamp and signature:
@@ -147,6 +149,7 @@ async def authenticate_request(
             principal=key_id,
             client_ip=client_ip,
             request_id=request_id,
+            timestamp=timestamp,
         )
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")

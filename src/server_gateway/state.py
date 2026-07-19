@@ -4,6 +4,7 @@ import sqlite3
 import threading
 import time
 from collections import deque
+from contextlib import closing
 
 
 class ReplayStore:
@@ -20,7 +21,7 @@ class ReplayStore:
         return conn
 
     def _init_db(self) -> None:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS seen_requests (
@@ -32,17 +33,20 @@ class ReplayStore:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_seen_requests_created_at ON seen_requests(created_at)"
             )
+            conn.commit()
 
     def mark_seen(self, request_id: str) -> bool:
         now = int(time.time())
         cutoff = now - self._ttl_seconds
-        with self._lock, self._connect() as conn:
-            conn.execute("DELETE FROM seen_requests WHERE created_at < ?", (cutoff,))
-            cur = conn.execute(
-                "INSERT OR IGNORE INTO seen_requests(request_id, created_at) VALUES(?, ?)",
-                (request_id, now),
-            )
-            return cur.rowcount == 1
+        with self._lock:
+            with closing(self._connect()) as conn:
+                conn.execute("DELETE FROM seen_requests WHERE created_at < ?", (cutoff,))
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO seen_requests(request_id, created_at) VALUES(?, ?)",
+                    (request_id, now),
+                )
+                conn.commit()
+                return cur.rowcount == 1
 
 
 class RateLimiter:

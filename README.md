@@ -33,11 +33,11 @@ All authenticated requests must include:
 
 ## Configuration
 
-Copy the example environment file:
+Copy the example environment file to the project root:
 
 ```bash
-cp config/server-gateway.env.example ~/.config/server-gateway/server-gateway.env
-chmod 600 ~/.config/server-gateway/server-gateway.env
+cp config/server-gateway.env.example .env
+chmod 600 .env
 ```
 
 Fill in at least the auth settings and any IP restrictions.
@@ -63,11 +63,10 @@ Run the installer on the target server:
 ./scripts/install_local.sh
 ```
 
-The installer:
+The installer, run from the project root directory:
 
-- copies the repo to `~/.local/share/server-gateway`
-- creates `~/.config/server-gateway/server-gateway.env` from the example if missing
-- installs a systemd user unit
+- creates `.env` from the example if missing
+- installs a systemd user unit that runs the app in place
 - runs `uv sync`
 
 On first install, edit the env file and start the service manually:

@@ -59,6 +59,6 @@ async def health(request: Request):
     return {
         "status": "ok",
         "service": settings.service_name,
-        "version": __version__,
         "auth_mode": settings.auth_mode,
+        "version": __version__,
     }

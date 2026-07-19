@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_ROOT="${HOME}/.local/share/server-gateway"
-ENV_PATH="${HOME}/.config/server-gateway/server-gateway.env"
+APP_ROOT="$(pwd)"
+ENV_PATH="${APP_ROOT}/.env"
 UNIT_PATH="${HOME}/.config/systemd/user/server-gateway.service"
 CREATED_ENV=0
 
-mkdir -p "${HOME}/.local/share" "${HOME}/.config/server-gateway" "${HOME}/.config/systemd/user"
-rm -rf "${APP_ROOT}"
-cp -R "$(cd "$(dirname "$0")/.." && pwd)" "${APP_ROOT}"
+if [[ ! -f "${APP_ROOT}/pyproject.toml" ]] || [[ ! -d "${APP_ROOT}/src/server_gateway" ]]; then
+  echo "This script must be run from the project root directory." >&2
+  exit 1
+fi
+
+mkdir -p "${HOME}/.config/systemd/user"
 
 if ! command -v uv >/dev/null 2>&1; then
   echo "uv is required but was not found in PATH" >&2
@@ -25,12 +28,28 @@ set -a
 . "${ENV_PATH}"
 set +a
 
-(
-  cd "${APP_ROOT}"
-  uv sync
-)
+uv sync
 
-cp "${APP_ROOT}/config/server-gateway.service" "${UNIT_PATH}"
+cat > "${UNIT_PATH}" <<EOF
+[Unit]
+Description=Server Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=${APP_ROOT}
+EnvironmentFile=${ENV_PATH}
+Environment=PYTHONPATH=${APP_ROOT}/src
+ExecStart=${APP_ROOT}/.venv/bin/python -m uvicorn server_gateway.main:app --host 127.0.0.1 --port 8787
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
+EOF
 
 systemctl --user daemon-reload
 if [[ "${CREATED_ENV}" -eq 1 ]]; then

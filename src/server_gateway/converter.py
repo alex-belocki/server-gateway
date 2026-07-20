@@ -10,6 +10,7 @@ getcontext().prec = 28
 
 TBANK_RATE_URL = "https://www.tbank.ru/api/common/v1/currency_rates?from=BYN&to=RUB"
 TBANK_CARD_CATEGORY = "DebitCardsOperations"
+TBANK_TRANSFER_CATEGORY = "C2CTransfers"
 HTTP_TIMEOUT_SECONDS = 20
 USER_AGENT = "Mozilla/5.0 (compatible; byn-rub-converter/2.0)"
 TWOPLACES = Decimal("0.01")
@@ -17,6 +18,14 @@ TWOPLACES = Decimal("0.01")
 
 class RateError(Exception):
     pass
+
+
+def tbank_category_for_mode(mode: str) -> str:
+    if mode == "transfer":
+        return TBANK_TRANSFER_CATEGORY
+    if mode == "purchase":
+        return TBANK_CARD_CATEGORY
+    raise RateError("mode must be transfer or purchase")
 
 
 def decimal_from_string(value: str) -> Decimal:
@@ -29,6 +38,10 @@ def round_byn(value: Decimal) -> Decimal:
 
 def round_card_rub(value: Decimal) -> Decimal:
     return value.quantize(TWOPLACES, rounding=ROUND_DOWN)
+
+
+def apply_transfer_fee(amount: Decimal, fee_percent: Decimal) -> Decimal:
+    return amount * (Decimal("1") - (fee_percent / Decimal("100")))
 
 
 def currency_code(currency: object) -> str | None:
@@ -86,6 +99,11 @@ def card_rate_from_tbank_response(body: str, category: str = TBANK_CARD_CATEGORY
 
 
 def fetch_card_rate(opener=urlopen) -> Decimal:
+    return fetch_tbank_rate("purchase", opener=opener)
+
+
+def fetch_tbank_rate(mode: str, opener=urlopen) -> Decimal:
+    category = tbank_category_for_mode(mode)
     request = Request(TBANK_RATE_URL, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
     try:
         with opener(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
@@ -93,7 +111,7 @@ def fetch_card_rate(opener=urlopen) -> Decimal:
     except (HTTPError, URLError, TimeoutError, OSError) as exc:
         raise RateError(f"Failed to fetch T-Bank rate: {exc}") from exc
 
-    return card_rate_from_tbank_response(body)
+    return card_rate_from_tbank_response(body, category=category)
 
 
 def byn_to_rub(amount_byn: Decimal, rate: Decimal) -> Decimal:

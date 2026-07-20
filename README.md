@@ -108,12 +108,14 @@ Supported operations from the original script:
 
 - `byn-to-rub` with optional explicit `rate`
 - `rub-to-byn` with optional explicit `rate`
-- if `rate` is omitted, the service loads the current T-Bank `DebitCardsOperations` BYN/RUB rate
+- if `rate` is omitted, the service uses `mode=transfer` by default
+- `transfer` mode loads the current T-Bank `C2CTransfers` BYN/RUB rate and applies `SERVER_GATEWAY_TRANSFER_FEE_PERCENT`
+- `purchase` mode keeps the old T-Bank `DebitCardsOperations` behavior without transfer fee
 
 Plaintext request payload before encryption:
 
 ```json
-{"operation":"byn-to-rub","amount":"11"}
+{"operation":"byn-to-rub","amount":"11","mode":"transfer"}
 ```
 
 or:
@@ -125,11 +127,11 @@ or:
 Plaintext response after decryption will look like one of these:
 
 ```json
-{"operation":"byn-to-rub","rate_rub_per_byn":"29.457","rate_source":"tbank","input_byn":"11","result_rub":"324.02","formula":"floor_to_kopecks(11 BYN * 29.457)"}
+{"operation":"byn-to-rub","mode":"transfer","fee_percent":"8.4","rate_rub_per_byn":"29.851","rate_source":"tbank","input_byn":"11","result_rub":"300.78","formula":"floor_to_kopecks((11 BYN * (1 - 8.4 / 100)) * 29.851)"}
 ```
 
 ```json
-{"operation":"rub-to-byn","rate_rub_per_byn":"29.457","rate_source":"explicit","input_rub":"324.02","result_byn":"11.00","formula":"round_to_kopecks(324.02 RUB / 29.457)"}
+{"operation":"rub-to-byn","mode":"purchase","rate_rub_per_byn":"29.457","rate_source":"explicit","input_rub":"324.02","result_byn":"11.00","formula":"round_to_kopecks(324.02 RUB / 29.457)"}
 ```
 
 ## How Secure Requests Work

@@ -11,7 +11,15 @@ from pydantic import BaseModel, Field
 from . import __version__
 from .auth import AuthContext, authenticate_request
 from .config import Settings
-from .converter import RateError, byn_to_rub, decimal_from_string, fetch_card_rate, format_decimal, rub_to_byn
+from .converter import (
+    RateError,
+    apply_transfer_fee,
+    byn_to_rub,
+    decimal_from_string,
+    fetch_tbank_rate,
+    format_decimal,
+    rub_to_byn,
+)
 from .crypto import decrypt_json_payload, encrypt_json_payload
 from .state import RateLimiter, ReplayStore
 
@@ -39,6 +47,7 @@ class ConverterRequest(BaseModel):
     operation: str
     amount: str
     rate: str | None = None
+    mode: str = "transfer"
 
 
 @asynccontextmanager
@@ -87,37 +96,55 @@ def _aad(method: str, path: str, request_id: str, timestamp: str) -> bytes:
     return "\n".join([method.upper(), path, request_id, timestamp]).encode("utf-8")
 
 
-def _build_converter_response(payload: ConverterRequest) -> dict[str, str]:
+def _build_converter_response(payload: ConverterRequest, settings: Settings) -> dict[str, str]:
     try:
         amount = decimal_from_string(payload.amount)
-        rate = decimal_from_string(payload.rate) if payload.rate else fetch_card_rate()
+        rate = decimal_from_string(payload.rate) if payload.rate else fetch_tbank_rate(payload.mode)
     except InvalidOperation as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid decimal amount or rate") from exc
     except RateError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        is_invalid_mode = str(exc) == "mode must be transfer or purchase"
+        status_code = status.HTTP_400_BAD_REQUEST if is_invalid_mode else status.HTTP_502_BAD_GATEWAY
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
+    net_amount = amount
     response = {
         "operation": payload.operation,
+        "mode": payload.mode,
         "rate_rub_per_byn": format_decimal(rate),
         "rate_source": "explicit" if payload.rate else "tbank",
     }
 
+    if payload.mode == "transfer":
+        net_amount = apply_transfer_fee(amount, settings.transfer_fee_percent)
+        response["fee_percent"] = format_decimal(settings.transfer_fee_percent)
+
     if payload.operation == "byn-to-rub":
-        result = byn_to_rub(amount, rate)
+        result = byn_to_rub(net_amount, rate)
         response["input_byn"] = format_decimal(amount)
         response["result_rub"] = format_decimal(result)
-        response["formula"] = (
-            f"floor_to_kopecks({format_decimal(amount)} BYN * {format_decimal(rate)})"
-        )
+        if payload.mode == "transfer":
+            response["formula"] = (
+                f"floor_to_kopecks(({format_decimal(amount)} BYN * (1 - {format_decimal(settings.transfer_fee_percent)} / 100)) * {format_decimal(rate)})"
+            )
+        else:
+            response["formula"] = (
+                f"floor_to_kopecks({format_decimal(amount)} BYN * {format_decimal(rate)})"
+            )
         return response
 
     if payload.operation == "rub-to-byn":
-        result = rub_to_byn(amount, rate)
+        result = rub_to_byn(net_amount, rate)
         response["input_rub"] = format_decimal(amount)
         response["result_byn"] = format_decimal(result)
-        response["formula"] = (
-            f"round_to_kopecks({format_decimal(amount)} RUB / {format_decimal(rate)})"
-        )
+        if payload.mode == "transfer":
+            response["formula"] = (
+                f"round_to_kopecks(({format_decimal(amount)} RUB * (1 - {format_decimal(settings.transfer_fee_percent)} / 100)) / {format_decimal(rate)})"
+            )
+        else:
+            response["formula"] = (
+                f"round_to_kopecks({format_decimal(amount)} RUB / {format_decimal(rate)})"
+            )
         return response
 
     raise HTTPException(
@@ -155,7 +182,7 @@ async def byn_rub_convert(
             aad=aad,
         )
     )
-    response_payload = _build_converter_response(payload)
+    response_payload = _build_converter_response(payload, settings)
     encrypted_response = encrypt_json_payload(
         key=settings.encryption_keys[envelope.key_id],
         payload=response_payload,

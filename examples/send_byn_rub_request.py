@@ -26,6 +26,7 @@ def main() -> None:
     plaintext_payload = {
         "operation": os.getenv("SERVER_GATEWAY_OPERATION", "byn-to-rub"),
         "amount": os.getenv("SERVER_GATEWAY_AMOUNT", "11"),
+        "mode": os.getenv("SERVER_GATEWAY_MODE", "transfer"),
     }
     explicit_rate = os.getenv("SERVER_GATEWAY_RATE", "").strip()
     if explicit_rate:

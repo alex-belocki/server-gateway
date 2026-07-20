@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import base64
+from decimal import Decimal
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Tuple
@@ -21,6 +22,13 @@ def _env_int(name: str, default: int) -> int:
     if raw is None or raw.strip() == "":
         return default
     return int(raw)
+
+
+def _env_decimal(name: str, default: str) -> Decimal:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return Decimal(default)
+    return Decimal(raw.strip().replace(",", "."))
 
 
 def _parse_hmac_keys(raw: str) -> dict[str, str]:
@@ -77,6 +85,7 @@ class Settings:
     allowed_ips: tuple[str, ...]
     trusted_proxies: tuple[str, ...]
     require_idempotency_key: bool
+    transfer_fee_percent: Decimal
 
     @classmethod
     def load(cls) -> "Settings":
@@ -104,6 +113,13 @@ class Settings:
                 "SERVER_GATEWAY_ALLOWED_IPS is required when bearer auth is enabled"
             )
 
+        transfer_fee_percent = _env_decimal(
+            "SERVER_GATEWAY_TRANSFER_FEE_PERCENT",
+            "8.4",
+        )
+        if transfer_fee_percent < 0 or transfer_fee_percent >= 100:
+            raise ValueError("SERVER_GATEWAY_TRANSFER_FEE_PERCENT must be in range [0, 100)")
+
         return cls(
             host=os.getenv("SERVER_GATEWAY_HOST", "127.0.0.1").strip(),
             port=_env_int("SERVER_GATEWAY_PORT", 8787),
@@ -125,4 +141,5 @@ class Settings:
             allowed_ips=allowed_ips,
             trusted_proxies=trusted_proxies,
             require_idempotency_key=_env_bool("SERVER_GATEWAY_REQUIRE_IDEMPOTENCY_KEY", True),
+            transfer_fee_percent=transfer_fee_percent,
         )

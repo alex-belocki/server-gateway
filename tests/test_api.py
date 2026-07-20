@@ -40,6 +40,7 @@ class ApiTests(unittest.TestCase):
             "default:" + base64.b64encode(self.key).decode("ascii")
         )
         os.environ["SERVER_GATEWAY_STATE_DB"] = os.path.join(self.temp_dir.name, "state.db")
+        os.environ["SERVER_GATEWAY_TRANSFER_FEE_PERCENT"] = "0"
         reload(main_module)
 
     def tearDown(self) -> None:
@@ -88,14 +89,15 @@ class ApiTests(unittest.TestCase):
     def test_encrypted_converter_endpoint_supports_byn_to_rub(self):
         from decimal import Decimal
 
-        original_fetch_card_rate = main_module.fetch_card_rate
-        main_module.fetch_card_rate = lambda: Decimal("29.457")
+        original_fetch_tbank_rate = main_module.fetch_tbank_rate
+        main_module.fetch_tbank_rate = lambda mode: Decimal("29.457") if mode == "transfer" else Decimal("28.080")
         try:
             payload = self._post({"operation": "byn-to-rub", "amount": "11"}, "req-1")
         finally:
-            main_module.fetch_card_rate = original_fetch_card_rate
+            main_module.fetch_tbank_rate = original_fetch_tbank_rate
 
         self.assertEqual(payload["operation"], "byn-to-rub")
+        self.assertEqual(payload["mode"], "transfer")
         self.assertEqual(payload["rate_rub_per_byn"], "29.457")
         self.assertEqual(payload["result_rub"], "324.02")
 
@@ -106,7 +108,44 @@ class ApiTests(unittest.TestCase):
         )
 
         self.assertEqual(payload["operation"], "rub-to-byn")
+        self.assertEqual(payload["mode"], "transfer")
         self.assertEqual(payload["result_byn"], "11.00")
+
+    def test_encrypted_converter_endpoint_supports_purchase_mode(self):
+        from decimal import Decimal
+
+        original_fetch_tbank_rate = main_module.fetch_tbank_rate
+        main_module.fetch_tbank_rate = lambda mode: Decimal("28.080") if mode == "purchase" else Decimal("29.457")
+        try:
+            payload = self._post(
+                {"operation": "byn-to-rub", "amount": "11", "mode": "purchase"},
+                "req-3",
+            )
+        finally:
+            main_module.fetch_tbank_rate = original_fetch_tbank_rate
+
+        self.assertEqual(payload["mode"], "purchase")
+        self.assertEqual(payload["rate_rub_per_byn"], "28.080")
+        self.assertEqual(payload["result_rub"], "308.88")
+
+    def test_encrypted_converter_endpoint_applies_transfer_fee(self):
+        from decimal import Decimal
+
+        os.environ["SERVER_GATEWAY_TRANSFER_FEE_PERCENT"] = "8.4"
+        original_fetch_tbank_rate = main_module.fetch_tbank_rate
+        main_module.fetch_tbank_rate = lambda mode: Decimal("29.851") if mode == "transfer" else Decimal("28.080")
+        try:
+            payload = self._post(
+                {"operation": "rub-to-byn", "amount": "168.48"},
+                "req-4",
+            )
+        finally:
+            main_module.fetch_tbank_rate = original_fetch_tbank_rate
+
+        self.assertEqual(payload["mode"], "transfer")
+        self.assertEqual(payload["fee_percent"], "8.4")
+        self.assertEqual(payload["rate_rub_per_byn"], "29.851")
+        self.assertEqual(payload["result_byn"], "5.17")
 
 
 if __name__ == "__main__":
